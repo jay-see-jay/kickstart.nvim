@@ -170,6 +170,9 @@ vim.o.scrolloff = 10
 -- See `:help 'confirm'`
 vim.o.confirm = true
 
+-- Automatically reload files changed outside of Neovim
+vim.o.autoread = true
+
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
@@ -180,6 +183,9 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 
+-- Open file explorer
+vim.keymap.set('n', '<leader>e', '<cmd>Oil<CR>', { desc = 'Open [E]xplorer' })
+
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
 -- is not what someone will guess without a bit more experience.
@@ -187,6 +193,45 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 -- NOTE: This won't work in all terminal emulators/tmux/etc. Try your own mapping
 -- or just use <C-\><C-n> to exit terminal mode
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
+
+-- Built-in terminal keymaps
+do
+  local term_buf = nil
+  local term_win = nil
+
+  local function open_terminal(split_cmd)
+    -- Reuse existing window if still visible
+    if term_win and vim.api.nvim_win_is_valid(term_win) then
+      vim.api.nvim_set_current_win(term_win)
+      vim.cmd 'startinsert'
+      return
+    end
+    -- Reuse existing buffer in a new split
+    if term_buf and vim.api.nvim_buf_is_valid(term_buf) then
+      vim.cmd(split_cmd)
+      term_win = vim.api.nvim_get_current_win()
+      vim.api.nvim_win_set_buf(term_win, term_buf)
+      vim.cmd 'startinsert'
+      return
+    end
+    -- Create a fresh terminal
+    vim.cmd(split_cmd .. ' | terminal')
+    term_buf = vim.api.nvim_get_current_buf()
+    term_win = vim.api.nvim_get_current_win()
+    vim.cmd 'startinsert'
+  end
+
+  local function close_terminal()
+    if term_win and vim.api.nvim_win_is_valid(term_win) then
+      vim.api.nvim_win_close(term_win, false)
+      term_win = nil
+    end
+  end
+
+  vim.keymap.set('n', '<leader>tt', function() open_terminal 'botright split' end, { desc = '[T]erminal horizontal split' })
+  vim.keymap.set('n', '<leader>tv', function() open_terminal 'botright vsplit' end, { desc = '[T]erminal [V]ertical split' })
+  vim.keymap.set({ 'n', 't' }, '<leader>tx', close_terminal, { desc = '[T]erminal close' })
+end
 
 -- TIP: Disable arrow keys in normal mode
 -- vim.keymap.set('n', '<left>', '<cmd>echo "Use h to move!!"<CR>')
@@ -224,6 +269,18 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
   callback = function()
     vim.hl.on_yank()
+  end,
+})
+
+-- Reload files changed outside of Neovim
+vim.api.nvim_create_autocmd({ 'FocusGained', 'TermLeave', 'BufEnter', 'WinEnter', 'CursorHold', 'CursorHoldI' }, {
+  desc = 'Check for file changes when events occur',
+  group = vim.api.nvim_create_augroup('checktime', { clear = true }),
+  callback = function()
+    local mode = vim.api.nvim_get_mode().mode
+    if not (mode:match '[cR!s]' or vim.fn.getcmdwintype() ~= '') then
+      vim.cmd 'checktime'
+    end
   end,
 })
 
@@ -989,6 +1046,8 @@ require('lazy').setup({
   -- require 'kickstart.plugins.lint',
   -- require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree',
+
+  { 'stevearc/oil.nvim', opts = {} },
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
